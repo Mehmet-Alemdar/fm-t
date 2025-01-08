@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from app.models import Book
+from app.models import Author
 from app.utils import paginate
 
 bp = Blueprint('books', __name__)
@@ -18,12 +19,20 @@ def get_books():
     if genre_filter:
         query = query.filter(genre__icontains=genre_filter)
 
+    author_name_filter = request.args.get('author_name')
+    if author_name_filter:
+        author_ids = [author.id for author in Author.objects(name__icontains=author_name_filter)]
+        query = query.filter(author__in=author_ids)
+
     result = paginate(query, page, per_page)
     books = [{
         'id': str(book.id),
         'title': book.title,
         'genre': book.genre,
-        'author': book.author
+        'author': {
+            'name': book.author.name,
+            'age': book.author.age
+        }
     } for book in result['items']]
     return jsonify({
         'total': result['total'],
@@ -35,12 +44,27 @@ def get_books():
 @bp.route('/', methods=['POST'])
 def create_book():
     data = request.json
-    book = Book(**data).save()
+    author_id = data.get('author_id')
+    author = Author.objects(id=author_id).first()
+    
+    if not author:
+        return jsonify({'error': 'Author not found'}), 404
+
+    book = Book(
+        title=data.get('title'),
+        genre=data.get('genre'),
+        author=author
+    )
+    book.save()
+
     return jsonify({
         'id': str(book.id),
         'title': book.title,
         'genre': book.genre,
-        'author': book.author
+        'author': {
+            'name': author.name,
+            'age': author.age
+        }
     }), 201
 
 @bp.route('/<book_id>', methods=['PUT'])
